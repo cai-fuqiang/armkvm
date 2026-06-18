@@ -548,13 +548,6 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 
-	/*
-	 * This vCPU may have been created after mpidr_data was initialized.
-	 * Throw out the pre-computed mappings if that is the case which forces
-	 * KVM to fall back to iteratively searching the vCPUs.
-	 */
-	kvm_destroy_mpidr_data(vcpu->kvm);
-
 	err = kvm_vgic_vcpu_init(vcpu);
 	if (err)
 		return err;
@@ -860,7 +853,12 @@ static void kvm_init_mpidr_data(struct kvm *kvm)
 		goto out;
 
 	kvm_for_each_vcpu(c, vcpu, kvm) {
-		u64 aff = kvm_vcpu_get_mpidr_aff(vcpu);
+		u64 aff;
+
+		if (!kvm_vcpu_initialized(vcpu))
+			continue;
+
+		aff = kvm_vcpu_get_mpidr_aff(vcpu);
 		aff_set |= aff;
 		aff_clr &= aff;
 	}
@@ -887,8 +885,14 @@ static void kvm_init_mpidr_data(struct kvm *kvm)
 	data->mpidr_mask = mask;
 
 	kvm_for_each_vcpu(c, vcpu, kvm) {
-		u64 aff = kvm_vcpu_get_mpidr_aff(vcpu);
-		u16 index = kvm_mpidr_index(data, aff);
+		u64 aff;
+		u16 index;
+
+		if (!kvm_vcpu_initialized(vcpu))
+			continue;
+
+		aff = kvm_vcpu_get_mpidr_aff(vcpu);
+		index = kvm_mpidr_index(data, aff);
 
 		data->cmpidr_to_idx[index] = c;
 	}
@@ -1717,6 +1721,13 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 	ret = kvm_vcpu_set_target(vcpu, init);
 	if (ret)
 		return ret;
+
+	/*
+	 * This vCPU may have been created after mpidr_data was initialized.
+	 * Throw out the pre-computed mappings if that is the case which forces
+	 * KVM to fall back to iteratively searching the vCPUs.
+	 */
+	kvm_destroy_mpidr_data(vcpu->kvm);
 
 	/*
 	 * Ensure a rebooted VM will fault in RAM pages and detect if the
