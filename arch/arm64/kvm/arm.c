@@ -852,6 +852,7 @@ static void kvm_init_mpidr_data(struct kvm *kvm)
 	unsigned long c, mask, nr_entries;
 	u64 aff_set = 0, aff_clr = ~0UL;
 	struct kvm_vcpu *vcpu;
+	bool warned = false;
 
 	mutex_lock(&kvm->arch.config_lock);
 
@@ -860,7 +861,19 @@ static void kvm_init_mpidr_data(struct kvm *kvm)
 		goto out;
 
 	kvm_for_each_vcpu(c, vcpu, kvm) {
-		u64 aff = kvm_vcpu_get_mpidr_aff(vcpu);
+		u64 aff;
+
+		/*
+		 * If a vCPU is unreset, its MPIDR might conflict with
+		 * that of vCPU 0.
+		 */
+		if (!warned && !kvm_vcpu_initialized(vcpu)) {
+			pr_warn("KVM: uninitialized vCPU found during mpidr_data "
+				"init, guest may hang or execute slower\n");
+			warned = true;
+		}
+
+		aff = kvm_vcpu_get_mpidr_aff(vcpu);
 		aff_set |= aff;
 		aff_clr &= aff;
 	}
