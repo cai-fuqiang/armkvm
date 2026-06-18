@@ -893,6 +893,17 @@ static void kvm_init_mpidr_data(struct kvm *kvm)
 		data->cmpidr_to_idx[index] = c;
 	}
 
+	kvm_for_each_vcpu(c, vcpu, kvm) {
+		u64 aff = kvm_vcpu_get_mpidr_aff(vcpu);
+		u16 index = kvm_mpidr_index(data, aff);
+
+		if (data->cmpidr_to_idx[index] != c) {
+			pr_warn("Multiple vCPUs share the same MPIDR value, "
+				"it may cause the guest to hang or run slower\n");
+			break;
+		}
+	}
+
 	rcu_assign_pointer(kvm->arch.mpidr_data, data);
 out:
 	mutex_unlock(&kvm->arch.config_lock);
